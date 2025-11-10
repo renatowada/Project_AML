@@ -3,19 +3,13 @@ import random
 
 import pandas as pd
 
+import argparse
 
-def generate_synthetic_data(num_rows=100000):
-    """
-    gera um dataset de clientes com dados fakes
-    """
+import os
 
-    random.seed(42)
-    rng = random.Random(42)
+import unicodedata
 
-    Faker.seed(42)
-    fake = Faker('pt_BR')
-
-    my_cols = [
+my_cols = [
     'name',
     'cpf',
     'birth_date',
@@ -38,41 +32,61 @@ def generate_synthetic_data(num_rows=100000):
     'receiver_account',
     ]
 
-    # cria um dicionario com as opcoes e proporcoes para as colunas categoricas
-    cat_cols = {
-        'gender': {
-            'options': ['m', 'f'],
-            'weight': [0.5, 0.5]
-            },
-        'account_type': {
-            'options': ['corrente', 'poupanca', 'salario', 'pagamento'],
-            'weight': [0.4, 0.2, 0.2, 0.2]
-            },
-        'transaction_type': {
-            'options': ['pix', 'ted', 'boleto'],
-            'weight': [0.7, 0.1, 0.2]
-            },
-        'device': {
-            'options': ['cellphone', 'desktop'],
-            'weight': [0.8, 0.2]
-            },
-        'receiver_acc_type': {
-            'options': ['corrente', 'poupanca', 'salario', 'pagamento'],
-            'weight': [0.4, 0.2, 0.2, 0.2]
-            },
-        'device_os': {
-            'options': ['myos', 'bot', 'bluescreen', 'cheeseos', 'penguin'],
-            'weight': [0.2, 0.5, 0.1, 0.1, 0.1]
-            }
+# cria um dicionario com as opcoes e proporcoes para as colunas categoricas
+cat_cols = {
+    'gender': {
+        'options': ['m', 'f'],
+        'weight': [0.5, 0.5]
+        },
+    'account_type': {
+        'options': ['corrente', 'poupanca', 'salario', 'pagamento'],
+        'weight': [0.4, 0.2, 0.2, 0.2]
+        },
+    'transaction_type': {
+        'options': ['pix', 'ted', 'boleto'],
+        'weight': [0.7, 0.1, 0.2]
+        },
+    'device': {
+        'options': ['cellphone', 'desktop'],
+        'weight': [0.8, 0.2]
+        },
+    'receiver_acc_type': {
+        'options': ['corrente', 'poupanca', 'salario', 'pagamento'],
+        'weight': [0.4, 0.2, 0.2, 0.2]
+        },
+    'device_os': {
+        'options': ['myos', 'bot', 'bluescreen', 'cheeseos', 'penguin'],
+        'weight': [0.2, 0.5, 0.1, 0.1, 0.1]
         }
+    }
+
+def remove_acentos(texto):
+    if isinstance(texto, str):
+        texto = unicodedata.normalize('NFKD', texto)
+        texto = texto.encode('ascii', 'ignore').decode('utf-8')
+    return texto
+
+# ---------------------------------------------------------------------------
+
+def generate_synthetic_data(num_rows=100):
+    """
+    gera um dataset de clientes com dados fakes
+    """
+
+    random.seed(42)
+    rng = random.Random(42)
+
+    Faker.seed(42)
+    fake = Faker('pt_BR')
+
+    
 
     all_cols = list(cat_cols.keys()) + my_cols
-
     data = []
 
     for i in range(num_rows):
         row = {
-            'name' : f"{fake.first_name()} {fake.last_name()}", #o comando padrao inclui titulos como sr, sra, dr...
+            'name' : remove_acentos(f"{fake.first_name()} {fake.last_name()}"), #o comando padrao inclui titulos como sr, sra, dr...
             'cpf' : fake.cpf(),
             'birth_date' : fake.date_of_birth(minimum_age=18, maximum_age=90),
             'adress_pcode' : fake.postcode(),
@@ -86,7 +100,7 @@ def generate_synthetic_data(num_rows=100000):
             'device_model' : fake.bothify(text="md##??"),
             'transaction_amount' : round(rng.uniform(0, 50000), 2),
             'transaction_id' : i + 1,
-            'transaction_city' : fake.city(),
+            'transaction_city' : remove_acentos(fake.city()),
             'transaction_time' : fake.date_time_between(start_date="-30d", end_date="now"),
             'receiver_id' : fake.bothify(text="rid##??"),
             'receiver_bank' : fake.bothify(text="bk##"),
@@ -106,14 +120,23 @@ def generate_synthetic_data(num_rows=100000):
 
     df = pd.DataFrame(data)
 
-    print(df.head())
-
-    return df
+    return df[all_cols]
 
 if __name__ == '__main__':
-    df = generate_synthetic_data(num_rows)
+    parser = argparse.ArgumentParser(description="Gera dados sintéticos.")
+    parser.add_argument("--rows", type=int, default=100, help="Número de linhas a gerar")
+    args = parser.parse_args()
 
-    output_path = 'data/01_raw/synthetic_dataset.csv'
+    df = generate_synthetic_data(num_rows=args.rows)
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    src_dir = os.path.dirname(script_dir)
+    project_root = os.path.dirname(src_dir)
+    output_path = os.path.join(project_root, 'data', '01_raw', 'synthetic_dataset.csv')
+    
+    output_dir = os.path.dirname(output_path)
+    os.makedirs(output_dir, exist_ok=True)
+
     df.to_csv(output_path, index=False)
 
     print(f"Dataset salvo em {output_path}")
