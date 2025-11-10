@@ -1,0 +1,119 @@
+from faker import Faker
+import random 
+
+import pandas as pd
+
+
+def generate_synthetic_data(num_rows=100000):
+    """
+    gera um dataset de clientes com dados fakes
+    """
+
+    random.seed(42)
+    rng = random.Random(42)
+
+    Faker.seed(42)
+    fake = Faker('pt_BR')
+
+    my_cols = [
+    'name',
+    'cpf',
+    'birth_date',
+    'adress_pcode',
+    'phone_number',
+    'acc_creation_date',
+    'agency',
+    'account',
+    'credit_score',
+    'sender_id',
+    'device_id',
+    'device_model',
+    'transaction_amount',
+    'transaction_id',
+    'transaction_city',
+    'transaction_time',
+    'receiver_id',
+    'receiver_bank',
+    'receiver_agency',
+    'receiver_account',
+    ]
+
+    # cria um dicionario com as opcoes e proporcoes para as colunas categoricas
+    cat_cols = {
+        'gender': {
+            'options': ['m', 'f'],
+            'weight': [0.5, 0.5]
+            },
+        'account_type': {
+            'options': ['corrente', 'poupanca', 'salario', 'pagamento'],
+            'weight': [0.4, 0.2, 0.2, 0.2]
+            },
+        'transaction_type': {
+            'options': ['pix', 'ted', 'boleto'],
+            'weight': [0.7, 0.1, 0.2]
+            },
+        'device': {
+            'options': ['cellphone', 'desktop'],
+            'weight': [0.8, 0.2]
+            },
+        'receiver_acc_type': {
+            'options': ['corrente', 'poupanca', 'salario', 'pagamento'],
+            'weight': [0.4, 0.2, 0.2, 0.2]
+            },
+        'device_os': {
+            'options': ['myos', 'bot', 'bluescreen', 'cheeseos', 'penguin'],
+            'weight': [0.2, 0.5, 0.1, 0.1, 0.1]
+            }
+        }
+
+    all_cols = list(cat_cols.keys()) + my_cols
+
+    data = []
+
+    for i in range(num_rows):
+        row = {
+            'name' : f"{fake.first_name()} {fake.last_name()}", #o comando padrao inclui titulos como sr, sra, dr...
+            'cpf' : fake.cpf(),
+            'birth_date' : fake.date_of_birth(minimum_age=18, maximum_age=90),
+            'adress_pcode' : fake.postcode(),
+            'phone_number' : fake.phone_number(),
+            'acc_creation_date' : fake.date_between(start_date='-5y', end_date='today'),
+            'agency' : fake.random_number(digits=4),
+            'account': fake.random_number(digits=6),
+            'credit_score' : round(rng.uniform(300, 850), 0),
+            'sender_id' : fake.bothify(text="sid##??"), # asterisco insere numero, interrogacao insere letra
+            'device_id' : fake.bothify(text="dv##??"),
+            'device_model' : fake.bothify(text="md##??"),
+            'transaction_amount' : round(rng.uniform(0, 50000), 2),
+            'transaction_id' : i + 1,
+            'transaction_city' : fake.city(),
+            'transaction_time' : fake.date_time_between(start_date="-30d", end_date="now"),
+            'receiver_id' : fake.bothify(text="rid##??"),
+            'receiver_bank' : fake.bothify(text="bk##"),
+            'receiver_agency' : fake.random_number(digits=4),
+            'receiver_account' : fake.random_number(digits=6),
+        }
+
+
+        for col, info in cat_cols.items():
+            row[col] = rng.choices(
+                info['options'],
+                weights=info['weight'],
+                k=1
+                )[0]
+
+        data.append(row)
+
+    df = pd.DataFrame(data)
+
+    print(df.head())
+
+    return df
+
+if __name__ == '__main__':
+    df = generate_synthetic_data(num_rows)
+
+    output_path = 'data/01_raw/synthetic_dataset.csv'
+    df.to_csv(output_path, index=False)
+
+    print(f"Dataset salvo em {output_path}")
