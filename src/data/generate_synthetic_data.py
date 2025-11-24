@@ -69,7 +69,7 @@ def remove_acentos(texto):
 
 # ---------------------------------------------------------------------------
 
-def generate_synthetic_data(num_rows=10000):
+def generate_synthetic_data(num_rows=50000):
     """
     gera um dataset de clientes com dados fakes
     """
@@ -97,11 +97,11 @@ def generate_synthetic_data(num_rows=10000):
         )[0]
 
         if amount_type == 'small':
-            transaction_amount = round(nrg.uniform(1, 1000), 2)
+            transaction_amount = round(rng.uniform(1, 1000), 2)
         elif amount_type == 'medium':
-            transaction_amount = round(nrg.uniform(1000.01, 2500), 2)
+            transaction_amount = round(rng.uniform(1000.01, 2500), 2)
         else:
-            transaction_amount = round(nrg.uniform(2500.01, 5000), 2)
+            transaction_amount = round(rng.uniform(2500.01, 5000), 2)
 
 
         row = {
