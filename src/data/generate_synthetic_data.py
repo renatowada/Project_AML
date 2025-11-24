@@ -86,13 +86,31 @@ def generate_synthetic_data(num_rows=10000):
     data = []
 
     for i in range(num_rows):
+        acc_creation_date = fake.date_between(start_date='-5y', end_date='today')
+
+        transaction_time = fake.date_time_between(start_date=acc_creation_date, end_date="now")
+
+        amount_type = rng.choices(
+            ['small', 'medium', 'large'],
+            weights=[0.75, 0.2, 0.05],
+            k=1
+        )[0]
+
+        if amount_type == 'small':
+            transaction_amount = round(nrg.uniform(1, 1000), 2)
+        elif amount_type == 'medium':
+            transaction_amount = round(nrg.uniform(1000.01, 2500), 2)
+        else:
+            transaction_amount = round(nrg.uniform(2500.01, 5000), 2)
+
+
         row = {
             'name' : remove_acentos(f"{fake.first_name()} {fake.last_name()}"), #o comando padrao inclui titulos como sr, sra, dr...
             'cpf' : fake.cpf(),
             'birth_date' : fake.date_of_birth(minimum_age=18, maximum_age=90),
             'adress_pcode' : fake.postcode(),
             'phone_number' : fake.phone_number(),
-            'acc_creation_date' : fake.date_between(start_date='-5y', end_date='today'),
+            'acc_creation_date' : acc_creation_date,
             'agency' : fake.random_number(digits=4),
             'account': fake.random_number(digits=6),
             'credit_score' : round(rng.uniform(300, 850), 0),
@@ -102,7 +120,7 @@ def generate_synthetic_data(num_rows=10000):
             'transaction_amount' : round(rng.uniform(0, 50000), 2),
             'transaction_id' : i + 1,
             'transaction_city' : remove_acentos(fake.city()),
-            'transaction_time' : fake.date_time_between(start_date="-30d", end_date="now"),
+            'transaction_time' : transaction_time,
             'receiver_id' : fake.bothify(text="rid##??"),
             'receiver_bank' : fake.bothify(text="bk##"),
             'receiver_agency' : fake.random_number(digits=4),
