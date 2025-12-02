@@ -18,7 +18,7 @@ my_cols = [
     'name',
     'cpf',
     'birth_date',
-    'adress_pcode',
+    'address_pcode',
     'phone_number',
     'acc_creation_date',
     'agency',
@@ -97,7 +97,7 @@ def generate_synthetic_data(num_rows=100000):
             'name': remove_acentos(f"{fake.first_name()} {fake.last_name()}"),
             'cpf': fake.cpf(),
             'birth_date': fake.date_of_birth(minimum_age=18, maximum_age=90),
-            'adress_pcode': fake.postcode(),
+            'address_pcode': fake.postcode(),
             'phone_number': fake.phone_number(),
             'acc_creation_date': creation_date,
             'agency': fake.random_number(digits=4),
@@ -134,103 +134,163 @@ def generate_synthetic_data(num_rows=100000):
     cutoff_date = today - timedelta(days=10)
     fraud_entry_end_global = cutoff_date - timedelta(days=1)
     fraud_exit_start_global = cutoff_date
+
+    mule_balances = {m_id: 0.0 for m_id in mules_pool}
     
     # Loop para gerar as LINHAS de transação
     for i in range(num_rows):
         
         # 1. Escolher Cenário
-        scenario = rng.choices(['normal', 'fraud_entry', 'fraud_exit'], weights=[0.70, 0.20, 0.10], k=1)[0]
+        scenario = rng.choices(['normal', 'fraud_cycle'], weights=[0.85, 0.15], k=1)[0]
         
-        sender_id = None
-        receiver_id = None
-        amount = 0
-        trans_date = None
+        rows_to_add = [] # Lista temporária para guardar as linhas deste ciclo
 
-        # --- Lógica de Sorteio de IDs e Datas ---
+        # --- Lógica de Definição de IDs ---
         
-        # Tentativa Fraud Entry
-        # Honesto -> Laranja
-        if scenario == 'fraud_entry':
-            sender_id = rng.choice(honest_pool)
-            receiver_id = rng.choice(mules_pool)
-            
-            # Validação Temporal
-            snd_creation = pd.to_datetime(accounts_db[sender_id]['acc_creation_date'])
-            if snd_creation < fraud_entry_end_global:
-                start_dt = max(today - timedelta(days=60), snd_creation)
-                trans_date = fake.date_time_between(start_date=start_dt, end_date=fraud_entry_end_global)
-                amount = round(rng.uniform(500, 5000), 2)
-            else:
-                scenario = 'normal' # Fallback
-
-        # Tentativa Fraud Exit
-        # Laranja -> Chefe
-        if scenario == 'fraud_exit':
-            sender_id = rng.choice(mules_pool)
-            receiver_id = rng.choice(bosses_pool)
-            
-            snd_creation = pd.to_datetime(accounts_db[sender_id]['acc_creation_date'])
-            # Chefe não precisa validar data de criação para receber, mas o laranja precisa para enviar
-            if snd_creation < today: 
-                start_dt = max(fraud_exit_start_global, snd_creation)
-                trans_date = fake.date_time_between(start_date=start_dt, end_date="now")
-                amount = round(rng.uniform(10000, 50000), 2)
-            else:
-                scenario = 'normal'
-
-        # Fallback Normal
+        # Cenário Normal
         # Honesto -> Honesto
         if scenario == 'normal':
             sender_id = rng.choice(honest_pool)
             receiver_id = rng.choice(honest_pool)
             while receiver_id == sender_id: receiver_id = rng.choice(honest_pool)
             
-            snd_creation = pd.to_datetime(accounts_db[sender_id]['acc_creation_date'])
-            trans_date = fake.date_time_between(start_date=snd_creation, end_date="now")
-            
-            amt_type = rng.choices(['small', 'medium', 'large'], weights=[0.75, 0.20, 0.05], k=1)[0]
-            if amt_type == 'small': amount = round(rng.uniform(1, 1000), 2)
-            elif amt_type == 'medium': amount = round(rng.uniform(1000, 10000), 2)
-            else: amount = round(rng.uniform(10000, 50000), 2)
+            trans_date = fake.date_time_between(start_date='-60d', end_date="now")
+            amount = round(rng.uniform(50, 2000), 2)
+            trans_type = 'pix'
 
-        # MONTAR A LINHA (Recuperando dados do Dicionário accounts_db)        
-        sender_profile = accounts_db[sender_id]
-        receiver_profile = accounts_db[receiver_id]
+            sender_profile = accounts_db[sender_id]
+            receiver_profile = accounts_db[receiver_id]
 
-        row = {
-            # Dados do Transacional
-            'transaction_id': i + 1,
-            'transaction_amount': amount,
-            'transaction_time': trans_date,
-            'transaction_city': remove_acentos(fake.city()),
+            # Montar linha
+            row_normal = {
+                'transaction_id': i,
+                'transaction_amount': amount,
+                'transaction_time': trans_date,
+                'sender_id': sender_id,
+                'receiver_id': receiver_id,
+                'transaction_type': trans_type,
+                'transaction_city': remove_acentos(fake.city()),
+                
+                # Dados do Sender
+                'name': sender_profile['name'],
+                'cpf': sender_profile['cpf'],
+                'birth_date': sender_profile['birth_date'],
+                'address_pcode': sender_profile['address_pcode'],
+                'phone_number': sender_profile['phone_number'],
+                'acc_creation_date': sender_profile['acc_creation_date'],
+                'agency': sender_profile['agency'],
+                'account': sender_profile['account'],
+                'credit_score': sender_profile['credit_score'],
+                'device_id': sender_profile['device_id'],
+                'device_model': sender_profile['device_model'],
+
+                # Dados do Receiver
+                'receiver_name': receiver_profile['name'],
+                'receiver_bank': fake.bothify(text="bk##"),
+                'receiver_agency': receiver_profile['agency'],
+                'receiver_account': receiver_profile['account']
+            }
+            rows_to_add.append(row_normal)
+
+        # Cenário Fraudulento
+        elif scenario == 'fraud_cycle':
+            sender_honest = rng.choice(honest_pool) # Origem
+            mule = rng.choice(mules_pool)           # Laranja
+            boss = rng.choice(bosses_pool)          # Chefe
+
+            # Honesto -> Laranja
+            sender_id = sender_honest
+            receiver_id = mule
             
-            # Dados do Sender (perfil fixo)
-            'sender_id': sender_id,
-            'name': sender_profile['name'],
-            'cpf': sender_profile['cpf'],
-            'birth_date': sender_profile['birth_date'],
-            'adress_pcode': sender_profile['adress_pcode'],
-            'phone_number': sender_profile['phone_number'],
-            'acc_creation_date': sender_profile['acc_creation_date'],
-            'agency': sender_profile['agency'],
-            'account': sender_profile['account'],
-            'credit_score': sender_profile['credit_score'],
-            'device_id': sender_profile['device_id'],
-            'device_model': sender_profile['device_model'],
+            sender_profile = accounts_db[sender_id]
+            receiver_profile = accounts_db[receiver_id]
+
+            base_amount = round(rng.uniform(2000, 15000), 2)
+            entry_date = fake.date_time_between(start_date='-30d', end_date="-2d")
+
+            row_in = {
+                'transaction_id': i,
+                'transaction_amount': base_amount,
+                'transaction_time': entry_date,
+                'sender_id': sender_id,
+                'receiver_id': receiver_id,
+                'transaction_type': 'pix',
+                'transaction_city': remove_acentos(fake.city()),
+
+                # Dados do Sender (Honesto)
+                'name': sender_profile['name'],
+                'cpf': sender_profile['cpf'],
+                'birth_date': sender_profile['birth_date'],
+                'address_pcode': sender_profile['address_pcode'],
+                'phone_number': sender_profile['phone_number'],
+                'acc_creation_date': sender_profile['acc_creation_date'],
+                'agency': sender_profile['agency'],
+                'account': sender_profile['account'],
+                'credit_score': sender_profile['credit_score'],
+                'device_id': sender_profile['device_id'],
+                'device_model': sender_profile['device_model'],
+
+                # Dados do Receiver (Laranja)
+                'receiver_name': receiver_profile['name'],
+                'receiver_bank': fake.bothify(text="bk##"),
+                'receiver_agency': receiver_profile['agency'],
+                'receiver_account': receiver_profile['account']
+            }
+            rows_to_add.append(row_in)
+
+            # Laranja -> Chefe
+            sender_id_out = mule
+            receiver_id_out = boss
             
-            # Dados do Receiver (Vêm do perfil fixo)
-            'receiver_id': receiver_id,
-            'receiver_name': receiver_profile['name'],
-            'receiver_bank': fake.bothify(text="bk##"),
-            'receiver_agency': receiver_profile['agency'],
-            'receiver_account': receiver_profile['account'],
-        }
-        
-        # Preencher colunas categóricas aleatórias (que variam por transação)
-        for col, info in cat_cols.items():
-            row[col] = rng.choices(info['options'], weights=info['weight'], k=1)[0]
+            sender_profile_out = accounts_db[sender_id_out]
+            receiver_profile_out = accounts_db[receiver_id_out]
+
+            # Transfere rapidamente para outra conta (de 1 a 6 horas)
+            delay = timedelta(hours=rng.randint(1, 6), minutes=rng.randint(0, 59))
+            exit_date = entry_date + delay
+
+            # O Laranja fica com uma comissão
+            fee_percent = rng.uniform(0.02, 0.05)
+            exit_amount = round(base_amount * (1 - fee_percent), 2)
+
+            row_out = {
+                'transaction_id': i + 1000000, # ID offset
+                'transaction_amount': exit_amount,
+                'transaction_time': exit_date,
+                'sender_id': sender_id_out,
+                'receiver_id': receiver_id_out,
+                'transaction_type': 'pix',
+                'transaction_city': remove_acentos(fake.city()),
+
+                # Dados do Sender (Laranja)
+                'name': sender_profile_out['name'],
+                'cpf': sender_profile_out['cpf'],
+                'birth_date': sender_profile_out['birth_date'],
+                'address_pcode': sender_profile_out['address_pcode'],
+                'phone_number': sender_profile_out['phone_number'],
+                'acc_creation_date': sender_profile_out['acc_creation_date'],
+                'agency': sender_profile_out['agency'],
+                'account': sender_profile_out['account'],
+                'credit_score': sender_profile_out['credit_score'],
+                'device_id': sender_profile_out['device_id'],
+                'device_model': sender_profile_out['device_model'],
+
+                # Dados do Receiver (Chefe)
+                'receiver_name': receiver_profile_out['name'],
+                'receiver_bank': fake.bothify(text="bk##"),
+                'receiver_agency': receiver_profile_out['agency'],
+                'receiver_account': receiver_profile_out['account']
+            }
+            rows_to_add.append(row_out)
+
+        # Preenche colunas categóricas aleatórias e adiciona à lista final
+        for row in rows_to_add:
+            for col, info in cat_cols.items():
+                # Verifica se já não foi preenchido
+                if col not in row: 
+                    row[col] = rng.choices(info['options'], weights=info['weight'], k=1)[0]
             
-        data.append(row)
+            data.append(row)
 
     df = pd.DataFrame(data)
     
